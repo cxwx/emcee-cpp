@@ -19,8 +19,8 @@ public:
     int ndim() const { return ndim_; }
 
     // Coordinate access
-    double* coords(int i) { return coords_.row(i); }
-    const double* coords(int i) const { return coords_.row(i); }
+    double* coords(int i) { return coords_.row(i).data(); }
+    const double* coords(int i) const { return coords_.row(i).data(); }
     double& coord(int i, int j) { return coords_(i, j); }
     double  coord(int i, int j) const { return coords_(i, j); }
     Matrix& coord_matrix() { return coords_; }
@@ -34,7 +34,8 @@ public:
 
     // Set coordinates from raw pointer (nwalkers * ndim doubles, row-major)
     void set_coords(const double* src) {
-        std::copy(src, src + nwalkers_ * ndim_, coords_.data());
+        Eigen::Map<const Matrix> m(src, nwalkers_, ndim_);
+        coords_ = m;
     }
 
     // Set log probabilities from raw pointer

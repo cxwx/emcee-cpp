@@ -30,24 +30,22 @@ public:
     int ndim() const { return ndim_; }
     int iteration() const { return iteration_; }
 
-    // Save one step from state
+    // Save one step from state (bulk copy via contiguous Eigen memory)
     void save_step(const State& state) {
-        // Append coords
-        for (int i = 0; i < nwalkers_; ++i)
-            for (int d = 0; d < ndim_; ++d)
-                chain_.push_back(state.coord(i, d));
+        const auto& coords = state.coord_matrix();
+        const double* src = coords.data();
+        chain_.insert(chain_.end(), src, src + nwalkers_ * ndim_);
 
-        // Append log_prob
-        for (int i = 0; i < nwalkers_; ++i)
-            log_prob_.push_back(state.log_prob(i));
+        const double* lp = state.log_prob();
+        log_prob_.insert(log_prob_.end(), lp, lp + nwalkers_);
 
         ++iteration_;
     }
 
-    // Record accepted proposals
-    void record_accepted(const std::vector<int>& counts) {
+    // Record accepted proposals (1 = accepted, 0 = rejected per walker)
+    void record_accepted(const char* accepted) {
         for (int i = 0; i < nwalkers_; ++i)
-            accepted_[i] += counts[i];
+            accepted_[i] += accepted[i];
     }
 
     // Get chain as flat array: chain_[iter * nwalkers * ndim + walker * ndim + dim]

@@ -46,17 +46,14 @@ public:
         if (accepted_out)
             std::fill(accepted_out, accepted_out + nwalkers, false);
 
-        // Shuffle walker indices for random split assignment
-        std::vector<int> indices(nwalkers);
-        std::iota(indices.begin(), indices.end(), 0);
+        // Ensure pre-allocated buffers are large enough
+        indices_.resize(nwalkers);
+        std::iota(indices_.begin(), indices_.end(), 0);
         if (randomize_split_)
-            std::shuffle(indices.begin(), indices.end(), rng);
+            std::shuffle(indices_.begin(), indices_.end(), rng);
 
         int split_size = nwalkers / nsplits_;
         int total_accepted = 0;
-
-        // Temporaries
-        Matrix s_coords, c_coords, q;
 
         for (int split = 0; split < nsplits_; ++split) {
             int start = split * split_size;
@@ -64,15 +61,14 @@ public:
             if (count <= 0) continue;
 
             // Gather sub-ensemble coordinates (read from current state)
-            s_coords.resize(count, ndim);
+            s_coords_.resize(count, ndim);
             for (int i = 0; i < count; ++i)
-                std::copy(state.coords(indices[start + i]),
-                          state.coords(indices[start + i]) + ndim,
-                          s_coords.row(i));
+                s_coords_.row(i) = Eigen::Map<const Vector>(
+                    state.coords(indices_[start + i]), ndim);
 
             // Gather complement coordinates
             int comp_count = nwalkers - count;
-            c_coords.resize(comp_count, ndim);
+            c_coords_.resize(comp_count, ndim);
             int ci = 0;
             for (int s = 0; s < nsplits_; ++s) {
                 if (s == split) continue;
@@ -80,30 +76,30 @@ public:
                 int s_count = (s == nsplits_ - 1)
                             ? (nwalkers - s_start) : split_size;
                 for (int i = 0; i < s_count; ++i)
-                    std::copy(state.coords(indices[s_start + i]),
-                              state.coords(indices[s_start + i]) + ndim,
-                              c_coords.row(ci++));
+                    c_coords_.row(ci++) = Eigen::Map<const Vector>(
+                        state.coords(indices_[s_start + i]), ndim);
             }
 
             // Compute proposal (subclass hook)
-            q.resize(count, ndim);
-            std::vector<double> factors(count, 0.0);
-            get_proposal(s_coords, c_coords, q, factors.data(), rng);
+            q_.resize(count, ndim);
+            factors_.resize(count, 0.0);
+            std::fill(factors_.begin(), factors_.end(), 0.0);
+            get_proposal(s_coords_, c_coords_, q_, factors_.data(), rng);
 
             // Evaluate log-probability at proposed positions
-            std::vector<double> new_lp(count);
+            new_lp_.resize(count);
             for (int i = 0; i < count; ++i)
-                new_lp[i] = log_prob_fn(q.row(i), ndim);
+                new_lp_[i] = log_prob_fn(q_.row(i).data(), ndim);
 
             // Accept/reject and update state immediately
             std::uniform_real_distribution<double> uniform(0.0, 1.0);
             for (int i = 0; i < count; ++i) {
-                int w = indices[start + i];
-                double log_diff = factors[i] + new_lp[i] - state.log_prob(w);
+                int w = indices_[start + i];
+                double log_diff = factors_[i] + new_lp_[i] - state.log_prob(w);
 
                 if (std::log(uniform(rng)) < log_diff) {
-                    std::copy(q.row(i), q.row(i) + ndim, state.coords(w));
-                    state.log_prob(w) = new_lp[i];
+                    Eigen::Map<Vector>(state.coords(w), ndim) = q_.row(i);
+                    state.log_prob(w) = new_lp_[i];
                     if (accepted_out) accepted_out[w] = true;
                     ++total_accepted;
                 }
@@ -124,6 +120,11 @@ protected:
 
     int nsplits_;
     bool randomize_split_;
+
+    // Pre-allocated buffers (reused across propose() calls)
+    std::vector<int> indices_;
+    Matrix s_coords_, c_coords_, q_;
+    std::vector<double> factors_, new_lp_;
 };
 
 } // namespace moves

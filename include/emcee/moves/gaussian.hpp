@@ -31,14 +31,15 @@ public:
         sigma_ = 0;
         for (double v : vars_) sigma_ += v;
         sigma_ /= vars_.size();
+        sqrt_vars_.resize(vars.size());
+        for (size_t d = 0; d < vars.size(); ++d)
+            sqrt_vars_[d] = std::sqrt(vars[d]);
     }
 
     // Full covariance matrix
     explicit GaussianMove(const Matrix& cov)
         : mode_(Mode::Full), cov_(cov), chol_ready_(false) {
-        sigma_ = 0;
-        for (int i = 0; i < cov.rows(); ++i) sigma_ += cov(i, i);
-        sigma_ /= cov.rows();
+        sigma_ = cov_.diagonal().mean();
     }
 
     int propose(State& state, const LogProbFn& log_prob_fn,
@@ -51,8 +52,11 @@ public:
 
         // Prepare Cholesky decomposition for full covariance mode
         if (mode_ == Mode::Full && !chol_ready_) {
-            if (!cov_.cholesky(L_))
-                L_ = Matrix(ndim, ndim, 0.0);  // fallback: zero proposal
+            Eigen::LLT<Matrix> llt(cov_);
+            if (llt.info() == Eigen::Success)
+                L_ = llt.matrixL();
+            else
+                L_ = Matrix::Zero(ndim, ndim);  // fallback: zero proposal
             chol_ready_ = true;
         }
 
@@ -60,7 +64,7 @@ public:
         std::uniform_real_distribution<double> uniform(0.0, 1.0);
 
         int accepted = 0;
-        std::vector<double> q(ndim);
+        Vector q(ndim);
 
         for (int i = 0; i < nwalkers; ++i) {
             // Generate proposal
@@ -72,7 +76,7 @@ public:
             // Accept/reject (symmetric proposal, factor = 0)
             double log_diff = new_lp - state.log_prob(i);
             if (std::log(uniform(rng)) < log_diff) {
-                std::copy(q.data(), q.data() + ndim, state.coords(i));
+                Eigen::Map<Vector>(state.coords(i), ndim) = q;
                 state.log_prob(i) = new_lp;
                 if (accepted_out) accepted_out[i] = true;
                 ++accepted;
@@ -87,35 +91,32 @@ private:
     Mode mode_;
     double sigma_;
     std::vector<double> vars_;
+    std::vector<double> sqrt_vars_;
     Matrix cov_, L_;
     bool chol_ready_;
+    Vector z_;
 
     void generate_proposal(const double* y, double* q, int ndim,
                            std::normal_distribution<double>& normal,
                            RNG& rng) {
+        z_.resize(ndim);
+        for (int d = 0; d < ndim; ++d) z_(d) = normal(rng);
+
+        Eigen::Map<Vector> q_map(q, ndim);
+        Eigen::Map<const Vector> y_map(y, ndim);
+
         switch (mode_) {
             case Mode::Isotropic:
-                for (int d = 0; d < ndim; ++d)
-                    q[d] = y[d] + sigma_ * normal(rng);
+                q_map = y_map + sigma_ * z_;
                 break;
 
             case Mode::Diagonal:
-                for (int d = 0; d < ndim; ++d)
-                    q[d] = y[d] + std::sqrt(vars_[d]) * normal(rng);
+                q_map = y_map + Eigen::Map<const Vector>(sqrt_vars_.data(), ndim).cwiseProduct(z_);
                 break;
 
-            case Mode::Full: {
-                // q = y + L * z, where z ~ N(0, I)
-                std::vector<double> z(ndim);
-                for (int d = 0; d < ndim; ++d) z[d] = normal(rng);
-                for (int d = 0; d < ndim; ++d) {
-                    double s = 0;
-                    for (int k = 0; k <= d; ++k)
-                        s += L_(d, k) * z[k];
-                    q[d] = y[d] + s;
-                }
+            case Mode::Full:
+                q_map = y_map + L_ * z_;
                 break;
-            }
         }
     }
 };

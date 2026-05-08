@@ -54,12 +54,8 @@ protected:
 
             // Differential vector
             double gamma = gamma0_ * (1.0 + sigma_ * normal(rng));
-            const double* y = s_coords.row(i);
-            const double* ca = c_coords.row(a);
-            const double* cb = c_coords.row(b);
 
-            for (int d = 0; d < ndim; ++d)
-                q(i, d) = y[d] + gamma * (ca[d] - cb[d]);
+            q.row(i) = s_coords.row(i) + gamma * (c_coords.row(a) - c_coords.row(b));
 
             factors[i] = 0.0;  // symmetric proposal
         }

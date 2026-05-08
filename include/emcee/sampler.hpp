@@ -225,6 +225,7 @@ private:
 
     std::vector<std::unique_ptr<moves::Move>> moves_;
     std::vector<double> move_weights_;
+    std::vector<char> accepted_;
 
     // Convert vector<unique_ptr<Move>> to raw unique_ptrs (for constructor)
     static std::vector<std::unique_ptr<moves::Move>>
@@ -255,20 +256,12 @@ private:
 
     // One MCMC step
     void step_() {
-        // Select a move (weighted random choice)
         int move_idx = select_move();
 
-        // Track per-walker acceptance
-        std::vector<char> accepted(nwalkers_, 0);
-        moves_[move_idx]->propose(state_, log_prob_fn_, rng_, accepted.data());
+        accepted_.resize(nwalkers_);
+        moves_[move_idx]->propose(state_, log_prob_fn_, rng_, accepted_.data());
+        backend_.record_accepted(accepted_.data());
 
-        // Record acceptance counts
-        std::vector<int> acc_count(nwalkers_, 0);
-        for (int i = 0; i < nwalkers_; ++i)
-            acc_count[i] = accepted[i] ? 1 : 0;
-        backend_.record_accepted(acc_count);
-
-        // Save to backend
         backend_.save_step(state_);
     }
 
@@ -290,32 +283,19 @@ private:
 
     // Validate initial walker positions
     void check_walkers() const {
-        // Check that walkers span the parameter space
-        // Compute centered coordinates and check condition number
-        std::vector<double> mean(ndim_, 0.0);
-        for (int i = 0; i < nwalkers_; ++i)
-            for (int d = 0; d < ndim_; ++d)
-                mean[d] += state_.coord(i, d);
-        for (int d = 0; d < ndim_; ++d)
-            mean[d] /= nwalkers_;
+        const Matrix& X = state_.coord_matrix();
+        Vector mean = X.colwise().mean();
 
-        // Compute the covariance matrix
-        Matrix cov(ndim_, ndim_);
-        for (int i = 0; i < nwalkers_; ++i)
-            for (int d1 = 0; d1 < ndim_; ++d1)
-                for (int d2 = 0; d2 < ndim_; ++d2) {
-                    double diff1 = state_.coord(i, d1) - mean[d1];
-                    double diff2 = state_.coord(i, d2) - mean[d2];
-                    cov(d1, d2) += diff1 * diff2;
-                }
-        cov.scale(1.0 / nwalkers_);
+        // Centered coordinates
+        Matrix centered = X.rowwise() - mean.transpose();
+
+        // Covariance matrix
+        Matrix cov = (centered.transpose() * centered) / nwalkers_;
 
         // Rough condition number check via diagonal ratio
-        double min_diag = 1e300, max_diag = 0;
-        for (int d = 0; d < ndim_; ++d) {
-            double v = std::abs(cov(d, d));
-            if (v > 0) { min_diag = std::min(min_diag, v); max_diag = std::max(max_diag, v); }
-        }
+        Vector diag = cov.diagonal().cwiseAbs();
+        double min_diag = diag.minCoeff();
+        double max_diag = diag.maxCoeff();
         if (min_diag > 0 && max_diag / min_diag > 1e8) {
             std::cerr << "WARNING: Initial walker positions may not span the "
                       << "parameter space well (condition number > 1e8). "

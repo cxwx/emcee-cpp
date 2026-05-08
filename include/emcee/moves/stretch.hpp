@@ -38,26 +38,27 @@ protected:
         std::uniform_real_distribution<double> uniform(0.0, 1.0);
         std::uniform_int_distribution<int> rand_idx(0, Nc - 1);
 
+        // Batch-generate random numbers
+        rand_u_.resize(Ns);
+        rand_j_.resize(Ns);
         for (int i = 0; i < Ns; ++i) {
-            // Draw stretch factor Z
-            double u = uniform(rng);
-            double zz = std::pow((a_ - 1.0) * u + 1.0, 2.0) / a_;
+            rand_u_[i] = uniform(rng);
+            rand_j_[i] = rand_idx(rng);
+        }
+
+        for (int i = 0; i < Ns; ++i) {
+            double zz = std::pow((a_ - 1.0) * rand_u_[i] + 1.0, 2.0) / a_;
             factors[i] = (ndim - 1.0) * std::log(zz);
 
-            // Pick a random complement walker
-            int j = rand_idx(rng);
-            const double* x = c_coords.row(j);
-            const double* y = s_coords.row(i);
-
             // q = x - (x - y) * Z = x*(1-Z) + y*Z
-            // Equivalently: q = y*Z + x*(1-Z)
-            for (int d = 0; d < ndim; ++d)
-                q(i, d) = x[d] - (x[d] - y[d]) * zz;
+            q.row(i) = c_coords.row(rand_j_[i]) * (1.0 - zz) + s_coords.row(i) * zz;
         }
     }
 
 private:
-    double a_;  // stretch scale parameter (default 2.0)
+    double a_;
+    std::vector<double> rand_u_;
+    std::vector<int> rand_j_;
 };
 
 } // namespace moves
