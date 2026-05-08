@@ -5,14 +5,14 @@ A header-only C++ implementation of the **emcee** affine-invariant ensemble samp
 [![Build Status](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://en.wikipedia.org/wiki/C%2B%2B17)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-`emcee-cpp` is a lightweight, zero-dependency C++ port of the popular Python [emcee](https://github.com/dfm/emcee) package. It implements the Goodman & Weare (2010) affine-invariant MCMC ensemble sampler, providing a robust and efficient way to sample from complex posterior distributions.
+`emcee-cpp` is a lightweight, header-only C++ port of the popular Python [emcee](https://github.com/dfm/emcee) package. It implements the Goodman & Weare (2010) affine-invariant MCMC ensemble sampler, providing a robust and efficient way to sample from complex posterior distributions.
 
 ![Chain Animation](assets/chain_anim.gif)
 
 ## Key Features
 
-- **Header-only:** Easy integration into any project—just include the headers.
-- **Zero Dependencies:** Requires only the C++17 standard library.
+- **Header-only:** No compiled library to link—just include the headers.
+- **Minimal Dependencies:** Requires only C++17 and [Eigen3](https://eigen.tuxfamily.org/).
 - **Affine-Invariant:** Uses the "Stretch Move" by default, which performs well even with highly anisotropic distributions.
 - **Multiple Moves:** Includes Stretch, Differential Evolution (DE), and Gaussian moves.
 - **Multi-threaded:** Parallel evaluation of walker log-probabilities using a built-in thread pool.
@@ -21,18 +21,34 @@ A header-only C++ implementation of the **emcee** affine-invariant ensemble samp
 
 ## Installation
 
-Since `emcee-cpp` is header-only, you can simply copy the `include/emcee` directory to your project's include path.
+> **Note:** `emcee-cpp` is a **header-only** library. No compiled library is produced; you only need the headers and a link dependency on Eigen3.
 
-If you use CMake:
+### Homebrew (macOS / Linux)
+
+```bash
+brew install emcee-cpp
+```
+
+### CMake (from source)
+
+```bash
+git clone https://github.com/user/emcee-cpp.git
+cd emcee-cpp
+cmake -B build
+cmake --build build
+cmake --install build
+```
+
+Then in your project's `CMakeLists.txt`:
 
 ```cmake
-# Add the include directory
-include_directories(${CMAKE_CURRENT_SOURCE_DIR}/emcee-cpp/include)
-
-# Or as an interface library
-add_library(emcee INTERFACE)
-target_include_directories(emcee INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/emcee-cpp/include)
+find_package(emcee-cpp REQUIRED)
+target_link_libraries(your_target PRIVATE emcee-cpp::emcee)
 ```
+
+### Manual
+
+Copy the `include/emcee` directory into your project's include path and link against Eigen3.
 
 ## Quick Start
 
