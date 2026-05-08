@@ -26,7 +26,7 @@ A header-only C++ implementation of the **emcee** affine-invariant ensemble samp
 ### Homebrew (macOS / Linux)
 
 ```bash
-brew install emcee-cpp
+brew install cxwx/cxbrew/emcee-cpp
 ```
 
 ### CMake (from source)
